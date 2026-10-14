@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload Photos</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f2f4f7; color: #1d2433;
+    }
+    .card {
+      max-width: 480px; margin: 0 auto; background: #fff;
+      border-radius: 16px; padding: 22px 18px; box-shadow: 0 2px 12px rgba(0,0,0,.08);
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 4px; }
+    .hint { color: #5b6475; font-size: .9rem; margin: 0 0 18px; }
+    label { display: block; font-weight: 600; margin: 14px 0 6px; }
+    input[type=text] {
+      width: 100%; padding: 13px 12px; font-size: 1rem;
+      border: 1px solid #c8cdd6; border-radius: 10px;
+    }
+    .picker {
+      display: block; text-align: center; padding: 18px; border: 2px dashed #9aa4b5;
+      border-radius: 12px; color: #2d5bd7; font-weight: 600; cursor: pointer;
+    }
+    .picker input { display: none; }
+    ul { list-style: none; padding: 0; margin: 10px 0 0; max-height: 220px; overflow-y: auto; }
+    li {
+      display: flex; justify-content: space-between; gap: 8px; font-size: .88rem;
+      padding: 7px 4px; border-bottom: 1px solid #eef0f3; word-break: break-all;
+    }
+    li span:last-child { color: #5b6475; white-space: nowrap; }
+    li.bad { color: #b42318; }
+    button {
+      width: 100%; margin-top: 18px; padding: 15px; font-size: 1.05rem; font-weight: 700;
+      color: #fff; background: #2d5bd7; border: 0; border-radius: 12px; cursor: pointer;
+    }
+    button:disabled { background: #9aa4b5; }
+    .bar { height: 10px; background: #e4e7ec; border-radius: 6px; margin-top: 16px; overflow: hidden; display: none; }
+    .bar div { height: 100%; width: 0; background: #2d5bd7; transition: width .2s; }
+    .msg { margin-top: 14px; padding: 12px; border-radius: 10px; display: none; font-size: .95rem; }
+    .msg.ok { display: block; background: #e7f6ec; color: #11683a; }
+    .msg.err { display: block; background: #fdecea; color: #b42318; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Upload your photos</h1>
+    <p class="hint">Up to {{MAX_FILES}} photos at a time, {{MAX_FILE_SIZE_MB}} MB each.</p>
+
+    <form id="form" novalidate>
+      <label for="name">Your name</label>
+      <input id="name" type="text" maxlength="60" autocomplete="name" placeholder="e.g. Rahul" required>
+
+      <label>Photos</label>
+      <label class="picker">
+        Tap to choose photos
+        <input id="photos" type="file" multiple accept="image/*,.heic,.heif">
+      </label>
+      <ul id="list"></ul>
+
+      <button id="btn" type="submit">Upload</button>
+      <div class="bar" id="bar"><div></div></div>
+      <div class="msg" id="msg"></div>
+    </form>
+  </div>
+
+  <script>
+    const MAX_FILES = {{MAX_FILES}};
+    const MAX_BYTES = {{MAX_FILE_SIZE_MB}} * 1024 * 1024;
+    const ALLOWED = '{{ALLOWED_EXT}}'.split(',');
+
+    const form = document.getElementById('form');
+    const nameInput = document.getElementById('name');
+    const fileInput = document.getElementById('photos');
+    const list = document.getElementById('list');
+    const btn = document.getElementById('btn');
+    const bar = document.getElementById('bar');
+    const fill = bar.firstElementChild;
+    const msg = document.getElementById('msg');
+
+    try { nameInput.value = localStorage.getItem('uploaderName') || ''; } catch (e) {}
+
+    function ext(name) {
+      const i = name.lastIndexOf('.');
+      return i >= 0 ? name.slice(i).toLowerCase() : '';
+    }
+    function size(n) {
+      return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.ceil(n / 1024) + ' KB';
+    }
+    function problem(f) {
+      if (!ALLOWED.includes(ext(f.name))) return 'not a photo';
+      if (f.size > MAX_BYTES) return 'too large';
+      return '';
+    }
+    function show(text, ok) {
+      msg.textContent = text;
+      msg.className = 'msg ' + (ok ? 'ok' : 'err');
+    }
+
+    fileInput.addEventListener('change', () => {
+      list.innerHTML = '';
+      msg.className = 'msg';
+      for (const f of fileInput.files) {
+        const li = document.createElement('li');
+        const p = problem(f);
+        if (p) li.className = 'bad';
+        const a = document.createElement('span');
+        a.textContent = f.name;
+        const b = document.createElement('span');
+        b.textContent = p || size(f.size);
+        li.append(a, b);
+        list.appendChild(li);
+      }
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = nameInput.value.trim();
+      const files = Array.from(fileInput.files);
+
+      if (!name) return show('Please enter your name.', false);
+      if (!files.length) return show('Please choose at least one photo.', false);
+      if (files.length > MAX_FILES) return show('Please choose at most ' + MAX_FILES + ' photos.', false);
+      const bad = files.filter(problem);
+      if (bad.length) return show('Remove the photos marked in red: ' + bad.map(f => f.name).join(', '), false);
+
+      try { localStorage.setItem('uploaderName', name); } catch (e) {}
+
+      // The name must be sent before the files so the server knows which folder to use.
+      const data = new FormData();
+      data.append('name', name);
+      files.forEach(f => data.append('photos', f, f.name));
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', 'upload');
+      xhr.upload.onprogress = (ev) => {
+        if (ev.lengthComputable) {
+          const pct = Math.round(ev.loaded / ev.total * 100);
+          fill.style.width = pct + '%';
+          btn.textContent = pct < 100 ? 'Uploading… ' + pct + '%' : 'Saving…';
+        }
+      };
+      xhr.onload = () => {
+        let res = {};
+        try { res = JSON.parse(xhr.responseText); } catch (e) {}
+        if (xhr.status === 200 && res.ok) {
+          show('Done! ' + res.saved.length + ' photo(s) uploaded. Thank you, ' + res.folder + '.', true);
+          fileInput.value = '';
+          list.innerHTML = '';
+        } else {
+          show(res.error || 'Upload failed (error ' + xhr.status + '). Please try again.', false);
+        }
+        finish();
+      };
+      xhr.onerror = () => { show('Connection lost. Check your Wi-Fi and try again.', false); finish(); };
+
+      btn.disabled = true;
+      btn.textContent = 'Uploading… 0%';
+      fill.style.width = '0';
+      bar.style.display = 'block';
+      msg.className = 'msg';
+      xhr.send(data);
+    });
+
+    function finish() {
+      btn.disabled = false;
+      btn.textContent = 'Upload';
+      setTimeout(() => { bar.style.display = 'none'; }, 800);
+    }
+  </script>
+</body>
+</html>
