@@ -20,7 +20,7 @@ if not exist node_modules (
 )
 
 rem Optional overrides (remove "rem" to use):
-rem set UPLOAD_DIR=C:\deepak sir
+rem set UPLOAD_DIR=D:\Some\Other\Folder
 rem set PORT=3000
 rem set PUBLIC_URL=https://your-tunnel.trycloudflare.com
 

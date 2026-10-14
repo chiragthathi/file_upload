@@ -148,7 +148,7 @@
         let res = {};
         try { res = JSON.parse(xhr.responseText); } catch (e) {}
         if (xhr.status === 200 && res.ok) {
-          show('Done! ' + res.saved.length + ' photo(s) uploaded. Thank you, ' + res.folder + '.', true);
+          show('Done! ' + res.saved.length + ' photo(s) uploaded. Thank you, ' + res.name + '.', true);
           fileInput.value = '';
           list.innerHTML = '';
         } else {

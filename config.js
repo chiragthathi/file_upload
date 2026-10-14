@@ -1,8 +1,11 @@
 // All settings live here. Each one can also be overridden with an environment
 // variable (shown in brackets), e.g. in start.bat:  set PORT=8080
+const path = require('path');
+
 module.exports = {
-  // Folder where person folders and photos are saved. Must already exist. [UPLOAD_DIR]
-  uploadDir: process.env.UPLOAD_DIR || 'C:\\deepak sir',
+  // Folder where person folders and photos are saved: the "uploads" folder inside
+  // this project. Created automatically if missing. [UPLOAD_DIR]
+  uploadDir: process.env.UPLOAD_DIR || path.join(__dirname, 'uploads'),
 
   // Port the server listens on. [PORT]
   port: Number(process.env.PORT) || 3000,

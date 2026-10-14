@@ -12,11 +12,8 @@ const QR_FILE = path.join(__dirname, 'qr-code.png');
 const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])$/i;
 
 // ---------- Startup checks ----------
-if (!fs.existsSync(UPLOAD_ROOT) || !fs.statSync(UPLOAD_ROOT).isDirectory()) {
-  console.error(`\nUpload folder not found: ${UPLOAD_ROOT}`);
-  console.error('Create the folder first, or change uploadDir in config.js.\n');
-  process.exit(1);
-}
+// Creates the upload folder if missing; never touches anything already inside it.
+fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 
 // ---------- Name helpers ----------
 
@@ -61,40 +58,33 @@ function createUniqueFile(dir, base, ext, cb, attempt = 0) {
   });
 }
 
-// ---------- Multer storage (writes straight into the person's folder) ----------
+// ---------- Multer storage (writes straight into the upload folder) ----------
+// Every photo is saved directly in UPLOAD_ROOT as "<Name> - <original name>.<ext>".
 const storage = {
   _handleFile(req, file, cb) {
     const person = sanitize(req.body && req.body.name, 60);
     if (!person) return cb(httpError(400, 'Please enter your name before choosing photos.'));
-
-    const personDir = path.join(UPLOAD_ROOT, person);
-    // Defence in depth: the folder must be directly inside the upload root.
-    if (path.dirname(personDir) !== UPLOAD_ROOT) return cb(httpError(400, 'Invalid name.'));
+    req.personName = person;
 
     const { base, ext } = safeFileName(file.originalname);
 
-    fs.mkdir(personDir, { recursive: true }, (mkErr) => {
-      if (mkErr) return cb(mkErr);
-      req.personDir = personDir;
-      createUniqueFile(personDir, base, ext, (openErr, fd, fullPath, savedName) => {
-        if (openErr) return cb(openErr);
-        req.personFolder = person;
-        const out = fs.createWriteStream(fullPath, { fd });
-        let failed = false;
-        const fail = (e) => {
-          if (failed) return;
-          failed = true;
-          out.destroy();
-          // Only removes the incomplete file this request just created.
-          fs.unlink(fullPath, () => cb(e));
-        };
-        file.stream.on('error', fail);
-        out.on('error', fail);
-        out.on('finish', () => {
-          if (!failed) cb(null, { path: fullPath, filename: savedName, size: out.bytesWritten });
-        });
-        file.stream.pipe(out);
+    createUniqueFile(UPLOAD_ROOT, `${person} - ${base}`, ext, (openErr, fd, fullPath, savedName) => {
+      if (openErr) return cb(openErr);
+      const out = fs.createWriteStream(fullPath, { fd });
+      let failed = false;
+      const fail = (e) => {
+        if (failed) return;
+        failed = true;
+        out.destroy();
+        // Only removes the incomplete file this request just created.
+        fs.unlink(fullPath, () => cb(e));
+      };
+      file.stream.on('error', fail);
+      out.on('error', fail);
+      out.on('finish', () => {
+        if (!failed) cb(null, { path: fullPath, filename: savedName, size: out.bytesWritten });
       });
+      file.stream.pipe(out);
     });
   },
   // Called by multer only for files created by the current, failed request.
@@ -150,17 +140,14 @@ app.get('/', (req, res) => res.type('html').send(pageHtml));
 app.post('/upload', upload.array('photos', config.maxFiles), (req, res) => {
   const files = req.files || [];
   if (files.length === 0) return res.status(400).json({ ok: false, error: 'No photos received.' });
-  console.log(`[${new Date().toLocaleString()}] ${req.personFolder}: saved ${files.length} photo(s)`);
-  res.json({ ok: true, folder: req.personFolder, saved: files.map((f) => f.filename) });
+  console.log(`[${new Date().toLocaleString()}] ${req.personName}: saved ${files.length} photo(s)`);
+  res.json({ ok: true, name: req.personName, saved: files.map((f) => f.filename) });
 });
 
 app.use((req, res) => res.status(404).send('Not found'));
 
 // Error handler: friendly JSON messages for upload errors.
 app.use((err, req, res, next) => {
-  // If this failed request created a new, still-empty person folder, tidy it up.
-  // rmdir only succeeds on an EMPTY folder, so existing photos can never be removed.
-  if (req.personDir) fs.rmdir(req.personDir, () => {});
   let status = err.status || 500;
   let message = err.message || 'Upload failed.';
   if (err instanceof multer.MulterError) {
@@ -197,7 +184,13 @@ function findLanIp() {
 const server = app.listen(config.port, '0.0.0.0', async () => {
   const url = config.publicUrl ? config.publicUrl.replace(/\/+$/, '') + '/' : `http://${findLanIp()}:${config.port}/`;
 
-  await QRCode.toFile(QR_FILE, url, { type: 'png', width: 600, margin: 2, errorCorrectionLevel: 'M' });
+  let qrSaved = true;
+  try {
+    await QRCode.toFile(QR_FILE, url, { type: 'png', width: 600, margin: 2, errorCorrectionLevel: 'M' });
+  } catch (e) {
+    qrSaved = false; // e.g. the PNG is open/locked in another program
+    console.warn(`\nCould not save ${QR_FILE} (${e.code || e.message}). Close any program using it and restart.`);
+  }
   const terminalQr = await QRCode.toString(url, { type: 'terminal', small: true });
 
   console.log('\n==============================================');
@@ -211,7 +204,7 @@ const server = app.listen(config.port, '0.0.0.0', async () => {
   console.log(terminalQr);
   console.log(' Press Ctrl+C to stop the server.\n');
 
-  if (config.openQrOnStart && process.platform === 'win32') {
+  if (qrSaved && config.openQrOnStart && process.platform === 'win32') {
     exec(`start "" "${QR_FILE}"`);
   }
 });

@@ -1,0 +1,13 @@
+# Dependencies (reinstalled with npm install)
+node_modules/
+
+# Generated on every start
+qr-code.png
+
+# Uploaded photos are private: keep the folder, never the contents
+uploads/*
+!uploads/.gitkeep
+
+# OS files
+Thumbs.db
+desktop.ini

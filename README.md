@@ -1,7 +1,7 @@
 # QR Code Photo Upload Server
 
 People scan a QR code, type their name, pick photos, and the photos are saved on this PC in
-`C:\deepak sir\<Their Name>\`. There's no dashboard, database, or login.
+`photo_upload\uploads\` as `<Their Name> - <photo name>`. There's no dashboard, database, or login.
 
 ## Project structure
 
@@ -11,7 +11,10 @@ photo_upload\
 ├─ server.js          ← Express + Multer server, QR generation
 ├─ public\index.html  ← the only page visitors see (upload form)
 ├─ package.json
-├─ start.bat          ← double-click to start
+├─ start.bat          ← double-click to start (same Wi-Fi only)
+├─ start-public.bat   ← double-click to start with a public HTTPS link (any network)
+├─ start-public.ps1   ← used by start-public.bat
+├─ uploads\           ← photos are saved here (created automatically)
 └─ qr-code.png        ← created automatically on every start
 ```
 
@@ -36,7 +39,7 @@ Press **Ctrl+C** to stop the server.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `uploadDir` | `C:\deepak sir` | Main photo folder. It must already exist. |
+| `uploadDir` | `uploads` (inside this project) | Main photo folder. Created automatically. |
 | `port` | `3000` | Server port |
 | `maxFileSizeMB` | `50` | Max size per photo |
 | `maxFiles` | `30` | Max photos per upload |
@@ -47,9 +50,10 @@ Each setting can also be set with an environment variable, e.g. `$env:PORT=8080;
 
 ## How files are saved
 
-- Name "Rahul" → `C:\deepak sir\Rahul\`. If Rahul uploads again, the photos go into the same folder.
-- Original filenames and extensions are kept. If a file with that name already exists, the new one
-  becomes `IMG_1234 (1).jpg`, `IMG_1234 (2).jpg`, and so on. Existing files are never overwritten or deleted.
+- All photos are saved directly in `uploads\`. No subfolders are created. Each file is named
+  `<Name> - <original filename>`, e.g. Rahul's `IMG_1234.jpg` → `uploads\Rahul - IMG_1234.jpg`.
+- If a file with that name already exists, the new one becomes `Rahul - IMG_1234 (1).jpg`,
+  `Rahul - IMG_1234 (2).jpg`, and so on. Existing files are never overwritten or deleted.
   Files are created with an exclusive-create flag, so this holds even when two uploads happen at the same moment.
 - Names are made safe for Windows: illegal characters are removed, `../` tricks are blocked, and reserved
   names like `CON` are prefixed with `_`. Hindi and other non-English names work.
@@ -87,7 +91,7 @@ Enter a name, tap *Tap to choose photos*, and pick photos from Gallery or Files.
 Enter a name, tap *Tap to choose photos* → *Photo Library*, select photos, and tap **Add**, then **Upload**.
 iPhones usually convert HEIC to JPG when uploading. Either way, both formats are accepted.
 
-Then check `C:\deepak sir\<name>\` on the PC. The terminal also logs each upload.
+Then check the `uploads\` folder on the PC for files starting with that name. The terminal also logs each upload.
 
 **Troubleshooting:** If the page doesn't load on the phone, first open `http://localhost:3000` on the PC.
 If that works, the problem is the firewall rule, the network profile not being Private, the phone being on
@@ -98,19 +102,17 @@ another network or guest Wi-Fi, or "client/AP isolation" being on in the router.
 Don't open ports on your router. Use a free **Cloudflare Tunnel** instead. It gives you an HTTPS URL and
 makes only outbound connections from your PC.
 
-```powershell
-winget install --id Cloudflare.cloudflared          # one-time install
-cloudflared tunnel --url http://localhost:3000      # keep this window open
-```
+1. Install cloudflared once, then close and reopen PowerShell:
+   ```powershell
+   winget install --id Cloudflare.cloudflared
+   ```
+2. Double-click **start-public.bat**. It starts the tunnel and the server together. The QR code
+   (terminal + `qr-code.png`) now points to a link like `https://random-words.trycloudflare.com`, which
+   works from any network, including mobile data. Photos still save in `uploads\` on this PC.
+3. Share `qr-code.png`, or the link itself, over WhatsApp, email, or print.
+4. Keep the window open while people upload. Closing it stops both the server and the link.
 
-The tunnel prints a URL like `https://random-words.trycloudflare.com`. In a **second** PowerShell window:
-
-```powershell
-cd "C:\Users\91931\Desktop\New folder (4)\photo_upload"
-$env:PUBLIC_URL="https://random-words.trycloudflare.com"; npm start
-```
-
-Now the QR code points to the HTTPS address, and it works from any network. Notes:
+Notes:
 - A quick tunnel URL changes every time you start it, so regenerate and reshare the QR code each time.
   For a permanent URL, create a named tunnel with a free Cloudflare account and your own domain.
 - **Anyone with the link can upload** while the tunnel is running. Share it only with the people who need it,
